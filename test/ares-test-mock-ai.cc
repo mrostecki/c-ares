@@ -16,17 +16,21 @@ namespace ares {
 namespace test {
 
 MATCHER_P(IncludesNumAddresses, n, "") {
+  if(!arg)
+    return false;
   int cnt = 0;
-  for (const ares_addrinfo* ai = arg; ai != NULL; ai = ai->ai_next)
+  for (const ares_addrinfo* ai = arg.get(); ai != NULL; ai = ai->ai_next)
     cnt++;
   return n == cnt;
 }
 
 MATCHER_P(IncludesV4Address, address, "") {
+  if(!arg)
+    return false;
   in_addr addressnum = {};
   if (!inet_pton(AF_INET, address, &addressnum))
     return false; // wrong number format?
-  for (const ares_addrinfo* ai = arg; ai != NULL; ai = ai->ai_next) {
+  for (const ares_addrinfo* ai = arg.get(); ai != NULL; ai = ai->ai_next) {
     if (ai->ai_family != AF_INET)
       continue;
     if (reinterpret_cast<sockaddr_in*>(ai->ai_addr)->sin_addr.s_addr ==
@@ -37,11 +41,13 @@ MATCHER_P(IncludesV4Address, address, "") {
 }
 
 MATCHER_P(IncludesV6Address, address, "") {
+  if(!arg)
+    return false;
   in6_addr addressnum = {};
   if (!inet_pton(AF_INET6, address, &addressnum)) {
     return false; // wrong number format?
   }
-  for (const ares_addrinfo* ai = arg; ai != NULL; ai = ai->ai_next) {
+  for (const ares_addrinfo* ai = arg.get(); ai != NULL; ai = ai->ai_next) {
     if (ai->ai_family != AF_INET6)
       continue;
     if (!memcmp(
@@ -69,31 +75,28 @@ TEST_P(MockUDPChannelTestAI, ParallelLookups) {
 
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  AIResult result1;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result1);
-  AIResult result2;
-  ares_getaddrinfo(channel_, "www.example.com.", NULL, &hints, AICallback, &result2);
-  AIResult result3;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result3);
+  AddrInfoResult result1;
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result1);
+  AddrInfoResult result2;
+  ares_getaddrinfo(channel_, "www.example.com.", NULL, &hints, AddrInfoCallback, &result2);
+  AddrInfoResult result3;
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result3);
   Process();
 
-  EXPECT_TRUE(result1.done);
-  EXPECT_EQ(result1.status, ARES_SUCCESS);
-  EXPECT_THAT(result1.airesult, IncludesNumAddresses(1));
-  EXPECT_THAT(result1.airesult, IncludesV4Address("2.3.4.5"));
-  ares_freeaddrinfo(result1.airesult);
+  EXPECT_TRUE(result1.done_);
+  EXPECT_EQ(result1.status_, ARES_SUCCESS);
+  EXPECT_THAT(result1.ai_, IncludesNumAddresses(1));
+  EXPECT_THAT(result1.ai_, IncludesV4Address("2.3.4.5"));
 
-  EXPECT_TRUE(result2.done);
-  EXPECT_EQ(result2.status, ARES_SUCCESS);
-  EXPECT_THAT(result2.airesult, IncludesNumAddresses(1));
-  EXPECT_THAT(result2.airesult, IncludesV4Address("1.2.3.4"));
-  ares_freeaddrinfo(result2.airesult);
+  EXPECT_TRUE(result2.done_);
+  EXPECT_EQ(result2.status_, ARES_SUCCESS);
+  EXPECT_THAT(result2.ai_, IncludesNumAddresses(1));
+  EXPECT_THAT(result2.ai_, IncludesV4Address("1.2.3.4"));
 
-  EXPECT_TRUE(result3.done);
-  EXPECT_EQ(result3.status, ARES_SUCCESS);
-  EXPECT_THAT(result3.airesult, IncludesNumAddresses(1));
-  EXPECT_THAT(result3.airesult, IncludesV4Address("2.3.4.5"));
-  ares_freeaddrinfo(result3.airesult);
+  EXPECT_TRUE(result3.done_);
+  EXPECT_EQ(result3.status_, ARES_SUCCESS);
+  EXPECT_THAT(result3.ai_, IncludesNumAddresses(1));
+  EXPECT_THAT(result3.ai_, IncludesV4Address("2.3.4.5"));
 }
 
 // UDP to TCP specific test
@@ -109,16 +112,15 @@ TEST_P(MockUDPChannelTestAI, TruncationRetry) {
     .WillOnce(SetReply(&server_, &rsptruncated))
     .WillOnce(SetReply(&server_, &rspok));
 
-  AIResult result;
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(result.status, ARES_SUCCESS);
-  EXPECT_THAT(result.airesult, IncludesNumAddresses(1));
-  EXPECT_THAT(result.airesult, IncludesV4Address("1.2.3.4"));
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_EQ(result.status_, ARES_SUCCESS);
+  EXPECT_THAT(result.ai_, IncludesNumAddresses(1));
+  EXPECT_THAT(result.ai_, IncludesV4Address("1.2.3.4"));
 }
 
 // TCP only to prevent retries
@@ -127,14 +129,13 @@ TEST_P(MockTCPChannelTestAI, MalformedResponse) {
   EXPECT_CALL(server_, OnRequest("www.google.com", ns_t_a))
     .WillOnce(SetReplyData(&server_, one));
 
-  AIResult result;
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(ARES_ETIMEOUT, result.status);
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_EQ(ARES_ETIMEOUT, result.status_);
 }
 
 TEST_P(MockTCPChannelTestAI, FormErrResponse) {
@@ -144,15 +145,14 @@ TEST_P(MockTCPChannelTestAI, FormErrResponse) {
   rsp.set_rcode(ns_r_formerr);
   EXPECT_CALL(server_, OnRequest("www.google.com", ns_t_a))
     .WillOnce(SetReply(&server_, &rsp));
-  
-  AIResult result;
+
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(ARES_EFORMERR, result.status);
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_EQ(ARES_EFORMERR, result.status_);
 }
 
 TEST_P(MockTCPChannelTestAI, ServFailResponse) {
@@ -162,16 +162,15 @@ TEST_P(MockTCPChannelTestAI, ServFailResponse) {
   rsp.set_rcode(ns_r_servfail);
   EXPECT_CALL(server_, OnRequest("www.google.com", ns_t_a))
     .WillOnce(SetReply(&server_, &rsp));
-  
-  AIResult result;
+
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
+  EXPECT_TRUE(result.done_);
   // ARES_FLAG_NOCHECKRESP not set, so SERVFAIL consumed
-  EXPECT_EQ(ARES_ECONNREFUSED, result.status);
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_EQ(ARES_ECONNREFUSED, result.status_);
 }
 
 TEST_P(MockTCPChannelTestAI, NotImplResponse) {
@@ -181,16 +180,15 @@ TEST_P(MockTCPChannelTestAI, NotImplResponse) {
   rsp.set_rcode(ns_r_notimpl);
   EXPECT_CALL(server_, OnRequest("www.google.com", ns_t_a))
     .WillOnce(SetReply(&server_, &rsp));
-  
-  AIResult result;
+
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
+  EXPECT_TRUE(result.done_);
   // ARES_FLAG_NOCHECKRESP not set, so NOTIMPL consumed
-  EXPECT_EQ(ARES_ECONNREFUSED, result.status);
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_EQ(ARES_ECONNREFUSED, result.status_);
 }
 
 TEST_P(MockTCPChannelTestAI, RefusedResponse) {
@@ -200,16 +198,15 @@ TEST_P(MockTCPChannelTestAI, RefusedResponse) {
   rsp.set_rcode(ns_r_refused);
   EXPECT_CALL(server_, OnRequest("www.google.com", ns_t_a))
     .WillOnce(SetReply(&server_, &rsp));
-  
-  AIResult result;
+
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
+  EXPECT_TRUE(result.done_);
   // ARES_FLAG_NOCHECKRESP not set, so REFUSED consumed
-  EXPECT_EQ(ARES_ECONNREFUSED, result.status);
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_EQ(ARES_ECONNREFUSED, result.status_);
 }
 
 // TODO: make it work
@@ -221,14 +218,13 @@ TEST_P(MockTCPChannelTestAI, RefusedResponse) {
 //  EXPECT_CALL(server_, OnRequest("www.google.com", ns_t_a))
 //    .WillOnce(SetReply(&server_, &rsp));
 //  
-//  AIResult result;
+//  AddrInfoResult result;
 //  struct ares_addrinfo hints = {};
 //  hints.ai_family = AF_INET;
-//  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+//  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
 //  Process();
-//  EXPECT_TRUE(result.done);
-//  EXPECT_EQ(ARES_ENODATA, result.status);
-//  ares_freeaddrinfo(result.airesult);
+//  EXPECT_TRUE(result.done_);
+//  EXPECT_EQ(ARES_ENODATA, result.status_);
 //}
 
 class MockExtraOptsTestAI
@@ -263,17 +259,16 @@ TEST_P(MockExtraOptsTestAI, SimpleQuery) {
     .add_answer(new DNSARR("www.google.com", 100, {2, 3, 4, 5}));
   ON_CALL(server_, OnRequest("www.google.com", ns_t_a))
     .WillByDefault(SetReply(&server_, &rsp));
-  
-  AIResult result;
+
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(ARES_SUCCESS, result.status);
-  EXPECT_THAT(result.airesult, IncludesNumAddresses(1));
-  EXPECT_THAT(result.airesult, IncludesV4Address("2.3.4.5"));
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_EQ(ARES_SUCCESS, result.status_);
+  EXPECT_THAT(result.ai_, IncludesNumAddresses(1));
+  EXPECT_THAT(result.ai_, IncludesV4Address("2.3.4.5"));
 }
 
 class MockFlagsChannelOptsTestAI
@@ -304,15 +299,14 @@ TEST_P(MockNoCheckRespChannelTestAI, ServFailResponse) {
   rsp.set_rcode(ns_r_servfail);
   ON_CALL(server_, OnRequest("www.google.com", ns_t_a))
     .WillByDefault(SetReply(&server_, &rsp));
-  
-  AIResult result;
+
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(ARES_ESERVFAIL, result.status);
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_EQ(ARES_ESERVFAIL, result.status_);
 }
 
 TEST_P(MockNoCheckRespChannelTestAI, NotImplResponse) {
@@ -322,15 +316,14 @@ TEST_P(MockNoCheckRespChannelTestAI, NotImplResponse) {
   rsp.set_rcode(ns_r_notimpl);
   ON_CALL(server_, OnRequest("www.google.com", ns_t_a))
     .WillByDefault(SetReply(&server_, &rsp));
-  
-  AIResult result;
+
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(ARES_ENOTIMP, result.status);
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_EQ(ARES_ENOTIMP, result.status_);
 }
 
 TEST_P(MockNoCheckRespChannelTestAI, RefusedResponse) {
@@ -340,15 +333,14 @@ TEST_P(MockNoCheckRespChannelTestAI, RefusedResponse) {
   rsp.set_rcode(ns_r_refused);
   ON_CALL(server_, OnRequest("www.google.com", ns_t_a))
     .WillByDefault(SetReply(&server_, &rsp));
-  
-  AIResult result;
+
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(ARES_EREFUSED, result.status);
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_EQ(ARES_EREFUSED, result.status_);
 }
 
 TEST_P(MockChannelTestAI, FamilyV6) {
@@ -360,17 +352,15 @@ TEST_P(MockChannelTestAI, FamilyV6) {
                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x03}));
   ON_CALL(server_, OnRequest("example.com", ns_t_aaaa))
     .WillByDefault(SetReply(&server_, &rsp6));
-  AIResult result;
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET6;
   ares_getaddrinfo(channel_, "example.com.", NULL, &hints,
-                   AICallback, &result);
+                   AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(result.status, ARES_SUCCESS);
-  EXPECT_THAT(result.airesult, IncludesNumAddresses(1));
-  EXPECT_THAT(result.airesult, IncludesV6Address("2121:0000:0000:0000:0000:0000:0000:0303"));
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_THAT(result.ai_, IncludesNumAddresses(1));
+  EXPECT_THAT(result.ai_, IncludesV6Address("2121:0000:0000:0000:0000:0000:0000:0303"));
 }
 
 TEST_P(MockChannelTestAI, FamilyV4) {
@@ -380,17 +370,15 @@ TEST_P(MockChannelTestAI, FamilyV4) {
     .add_answer(new DNSARR("example.com", 100, {2, 3, 4, 5}));
   ON_CALL(server_, OnRequest("example.com", ns_t_a))
     .WillByDefault(SetReply(&server_, &rsp4));
-  AIResult result = {};
+  AddrInfoResult result = {};
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
   ares_getaddrinfo(channel_, "example.com.", NULL, &hints,
-                   AICallback, &result);
+                   AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(result.status, ARES_SUCCESS);
-  EXPECT_THAT(result.airesult, IncludesNumAddresses(1));
-  EXPECT_THAT(result.airesult, IncludesV4Address("2.3.4.5"));
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_THAT(result.ai_, IncludesNumAddresses(1));
+  EXPECT_THAT(result.ai_, IncludesV4Address("2.3.4.5"));
 }
 
 TEST_P(MockChannelTestAI, FamilyV4_MultipleAddresses) {
@@ -401,18 +389,16 @@ TEST_P(MockChannelTestAI, FamilyV4_MultipleAddresses) {
     .add_answer(new DNSARR("example.com", 100, {7, 8, 9, 0}));
   ON_CALL(server_, OnRequest("example.com", ns_t_a))
     .WillByDefault(SetReply(&server_, &rsp4));
-  AIResult result = {};
+  AddrInfoResult result = {};
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
   ares_getaddrinfo(channel_, "example.com.", NULL, &hints,
-                   AICallback, &result);
+                   AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(result.status, ARES_SUCCESS);
-  EXPECT_THAT(result.airesult, IncludesNumAddresses(2));
-  EXPECT_THAT(result.airesult, IncludesV4Address("2.3.4.5"));
-  EXPECT_THAT(result.airesult, IncludesV4Address("7.8.9.0"));
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_THAT(result.ai_, IncludesNumAddresses(2));
+  EXPECT_THAT(result.ai_, IncludesV4Address("2.3.4.5"));
+  EXPECT_THAT(result.ai_, IncludesV4Address("7.8.9.0"));
 }
 
 TEST_P(MockChannelTestAI, FamilyUnspecified) {
@@ -430,18 +416,16 @@ TEST_P(MockChannelTestAI, FamilyUnspecified) {
     .add_answer(new DNSARR("example.com", 100, {2, 3, 4, 5}));
   ON_CALL(server_, OnRequest("example.com", ns_t_a))
     .WillByDefault(SetReply(&server_, &rsp4));
-  AIResult result;
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_UNSPEC;
   ares_getaddrinfo(channel_, "example.com.", NULL, &hints,
-                   AICallback, &result);
+                   AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(result.status, ARES_SUCCESS);
-  EXPECT_THAT(result.airesult, IncludesNumAddresses(2));
-  EXPECT_THAT(result.airesult, IncludesV4Address("2.3.4.5"));
-  EXPECT_THAT(result.airesult, IncludesV6Address("2121:0000:0000:0000:0000:0000:0000:0303"));
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_THAT(result.ai_, IncludesNumAddresses(2));
+  EXPECT_THAT(result.ai_, IncludesV4Address("2.3.4.5"));
+  EXPECT_THAT(result.ai_, IncludesV6Address("2121:0000:0000:0000:0000:0000:0000:0303"));
 }
 
 class MockEDNSChannelTestAI : public MockFlagsChannelOptsTestAI {
@@ -460,16 +444,15 @@ TEST_P(MockEDNSChannelTestAI, RetryWithoutEDNS) {
   EXPECT_CALL(server_, OnRequest("www.google.com", ns_t_a))
     .WillOnce(SetReply(&server_, &rspfail))
     .WillOnce(SetReply(&server_, &rspok));
-  
-  AIResult result;
+
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www.google.com.", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(ARES_SUCCESS, result.status);
-  EXPECT_THAT(result.airesult, IncludesV4Address("1.2.3.4"));
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_THAT(result.ai_, IncludesNumAddresses(1));
+  EXPECT_THAT(result.ai_, IncludesV4Address("1.2.3.4"));
 }
 
 TEST_P(MockChannelTestAI, SearchDomains) {
@@ -490,16 +473,14 @@ TEST_P(MockChannelTestAI, SearchDomains) {
   ON_CALL(server_, OnRequest("www.third.gov", ns_t_a))
     .WillByDefault(SetReply(&server_, &yesthird));
 
-  AIResult result;
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_INET;
-  ares_getaddrinfo(channel_, "www", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(result.status, ARES_SUCCESS);
-  EXPECT_THAT(result.airesult, IncludesNumAddresses(1));
-  EXPECT_THAT(result.airesult, IncludesV4Address("2.3.4.5"));
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_THAT(result.ai_, IncludesNumAddresses(1));
+  EXPECT_THAT(result.ai_, IncludesV4Address("2.3.4.5"));
 }
 
 TEST_P(MockChannelTestAI, SearchDomainsServFailOnAAAA) {
@@ -513,7 +494,7 @@ TEST_P(MockChannelTestAI, SearchDomainsServFailOnAAAA) {
     .add_question(new DNSQuestion("www.first.com", ns_t_a));
   ON_CALL(server_, OnRequest("www.first.com", ns_t_a))
     .WillByDefault(SetReply(&server_, &nofirst4));
-  
+
   DNSPacket nosecond;
   nosecond.set_response().set_aa().set_rcode(ns_r_nxdomain)
     .add_question(new DNSQuestion("www.second.org", ns_t_aaaa));
@@ -525,7 +506,7 @@ TEST_P(MockChannelTestAI, SearchDomainsServFailOnAAAA) {
     .add_answer(new DNSARR("www.second.org", 0x0200, {2, 3, 4, 5}));
   ON_CALL(server_, OnRequest("www.second.org", ns_t_a))
     .WillByDefault(SetReply(&server_, &yessecond4));
-  
+
   DNSPacket failthird;
   failthird.set_response().set_aa().set_rcode(ns_r_servfail)
     .add_question(new DNSQuestion("www.third.gov", ns_t_aaaa));
@@ -536,17 +517,15 @@ TEST_P(MockChannelTestAI, SearchDomainsServFailOnAAAA) {
     .add_question(new DNSQuestion("www.third.gov", ns_t_a));
   ON_CALL(server_, OnRequest("www.third.gov", ns_t_a))
     .WillByDefault(SetReply(&server_, &failthird4));
-  
-  AIResult result;
+
+  AddrInfoResult result;
   struct ares_addrinfo hints = {};
   hints.ai_family = AF_UNSPEC;
-  ares_getaddrinfo(channel_, "www", NULL, &hints, AICallback, &result);
+  ares_getaddrinfo(channel_, "www", NULL, &hints, AddrInfoCallback, &result);
   Process();
-  EXPECT_TRUE(result.done);
-  EXPECT_EQ(result.status, ARES_SUCCESS);
-  EXPECT_THAT(result.airesult, IncludesNumAddresses(1));
-  EXPECT_THAT(result.airesult, IncludesV4Address("2.3.4.5"));
-  ares_freeaddrinfo(result.airesult);
+  EXPECT_TRUE(result.done_);
+  EXPECT_THAT(result.ai_, IncludesNumAddresses(1));
+  EXPECT_THAT(result.ai_, IncludesV4Address("2.3.4.5"));
 }
 
 class MockMultiServerChannelTestAI
@@ -556,16 +535,15 @@ class MockMultiServerChannelTestAI
   MockMultiServerChannelTestAI(bool rotate)
     : MockChannelOptsTest(3, GetParam().first, GetParam().second, nullptr, rotate ? ARES_OPT_ROTATE : ARES_OPT_NOROTATE) {}
   void CheckExample() {
-    AIResult result;
+    AddrInfoResult result;
     struct ares_addrinfo hints = {};
     hints.ai_family = AF_INET;
-    ares_getaddrinfo(channel_, "www.example.com.", NULL, &hints, AICallback, &result);
+    ares_getaddrinfo(channel_, "www.example.com.", NULL, &hints, AddrInfoCallback, &result);
     Process();
-    EXPECT_TRUE(result.done);
-    EXPECT_EQ(result.status, ARES_SUCCESS);
-    EXPECT_THAT(result.airesult, IncludesNumAddresses(1));
-    EXPECT_THAT(result.airesult, IncludesV4Address("2.3.4.5"));
-    ares_freeaddrinfo(result.airesult);
+    EXPECT_TRUE(result.done_);
+    EXPECT_EQ(result.status_, ARES_SUCCESS);
+    EXPECT_THAT(result.ai_, IncludesNumAddresses(1));
+    EXPECT_THAT(result.ai_, IncludesV4Address("2.3.4.5"));
   }
 };
 
