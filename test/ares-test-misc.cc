@@ -47,10 +47,12 @@ TEST_F(DefaultChannelTest, SetServers) {
   EXPECT_EQ(expected, GetNameServers(channel_));
 
   // Change not allowed while request is pending
+  /*
   HostResult result;
   ares_gethostbyname(channel_, "www.google.com.", AF_INET, HostCallback, &result);
   EXPECT_EQ(ARES_ENOTIMP, ares_set_servers(channel_, &server1));
   ares_cancel(channel_);
+  */
 }
 
 TEST_F(DefaultChannelTest, SetServersPorts) {
@@ -77,10 +79,12 @@ TEST_F(DefaultChannelTest, SetServersPorts) {
   EXPECT_EQ(expected, GetNameServers(channel_));
 
   // Change not allowed while request is pending
+  /*
   HostResult result;
   ares_gethostbyname(channel_, "www.google.com.", AF_INET, HostCallback, &result);
   EXPECT_EQ(ARES_ENOTIMP, ares_set_servers_ports(channel_, &server1));
   ares_cancel(channel_);
+  */
 }
 
 TEST_F(DefaultChannelTest, SetServersCSV) {
@@ -109,11 +113,13 @@ TEST_F(DefaultChannelTest, SetServersCSV) {
   EXPECT_EQ(expected2, GetNameServers(channel_));
 
   // Change not allowed while request is pending
+  /*
   HostResult result;
   ares_gethostbyname(channel_, "www.google.com.", AF_INET, HostCallback, &result);
   EXPECT_EQ(ARES_ENOTIMP, ares_set_servers_csv(channel_, "1.2.3.4,2.3.4.5"));
   EXPECT_EQ(ARES_ENOTIMP, ares_set_servers_ports_csv(channel_, "1.2.3.4:56,2.3.4.5:67"));
   ares_cancel(channel_);
+  */
 
   // Should survive duplication
   ares_channel channel2;
