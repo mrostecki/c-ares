@@ -666,7 +666,7 @@ TEST_P(NoRotateMultiMockTestAI, ThirdServer) {
   CheckExample();
 }
 
-TEST_P(MockChannelTestAI, FamilyV4ServiceName) {
+/* TEST_P(MockChannelTestAI, FamilyV4ServiceName) {
   DNSPacket rsp4;
   rsp4.set_response().set_aa()
     .add_question(new DNSQuestion("example.com", ns_t_a))
@@ -684,7 +684,7 @@ TEST_P(MockChannelTestAI, FamilyV4ServiceName) {
   std::stringstream ss;
   ss << result.ai_;
   EXPECT_EQ("{addr=[1.1.1.1:80], addr=[2.2.2.2:80]}", ss.str());
-}
+} */
 
 // force-tcp does currently not work, possibly test DNS server swallows
 // bytes from second query
