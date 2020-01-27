@@ -325,7 +325,7 @@ class TransientDir {
   ~TransientDir();
 
  private:
-  std::string dirname_;
+  std::string full_dirname_;
 };
 
 // C++ wrapper around tempnam()
@@ -334,18 +334,20 @@ std::string TempNam(const char *dir, const char *prefix);
 // RAII class to temporarily create file of a given name and contents.
 class TransientFile {
  public:
-  TransientFile(const std::string &filename, const std::string &contents);
+  TransientFile(const std::string &prefix,
+		const std::string &filename,
+		const std::string &contents);
   ~TransientFile();
 
  protected:
-  std::string filename_;
+  std::string full_filename_;
 };
 
 // RAII class for a temporary file with the given contents.
 class TempFile : public TransientFile {
  public:
   TempFile(const std::string& contents);
-  const char* filename() const { return filename_.c_str(); }
+  const char* filename() const { return full_filename_.c_str(); }
 };
 
 #ifdef _WIN32

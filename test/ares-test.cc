@@ -6,6 +6,7 @@
 #include "nameser.h"
 #include "ares_dns.h"
 
+#include <limits.h>
 #ifdef HAVE_NETDB_H
 #include <netdb.h>
 #endif
@@ -717,44 +718,45 @@ std::vector<std::string> GetNameServers(ares_channel channel) {
   return results;
 }
 
-TransientDir::TransientDir(const std::string& dirname) : dirname_(dirname) {
-  if (mkdir_(dirname_.c_str(), 0755) != 0) {
-    std::cerr << "Failed to create subdirectory '" << dirname_ << "'" << std::endl;
+TransientDir::TransientDir(const std::string& dirname) : full_dirname_("") {
+  char full_dirname[PATH_MAX];
+  sprintf(full_dirname, "/tmp/%s.XXXXXXX", dirname.c_str());
+  char *p = mkdtemp(full_dirname);
+  if (p == nullptr) {
+    std::cerr << "Failed to create subdirectory '" << full_dirname << "'" << std::endl;
+    return;
   }
+  full_dirname_.append(p);
 }
 
 TransientDir::~TransientDir() {
-  rmdir(dirname_.c_str());
+  rmdir(full_dirname_.c_str());
 }
 
-TransientFile::TransientFile(const std::string& filename,
+TransientFile::TransientFile(const std::string& prefix,
+                             const std::string& filename,
                              const std::string& contents)
-    : filename_(filename) {
-  FILE *f = fopen(filename.c_str(), "w");
-  if (f == nullptr) {
+    : full_filename_("") {
+  char full_filename[PATH_MAX];
+  sprintf(full_filename, "/tmp/%s/%s.XXXXXX", prefix.c_str(), filename.c_str());
+  int f = mkstemp(full_filename);
+  if (f < 0) {
     std::cerr << "Error: failed to create '" << filename << "'" << std::endl;
     return;
   }
-  int rc = fwrite(contents.data(), 1, contents.size(), f);
-  if (rc != (int)contents.size()) {
+  size_t rc = write(f, contents.data(), contents.size());
+  if (rc != contents.size()) {
     std::cerr << "Error: failed to write contents of '" << filename << "'" << std::endl;
   }
-  fclose(f);
+  close(f);
 }
 
 TransientFile::~TransientFile() {
-  unlink(filename_.c_str());
-}
-
-std::string TempNam(const char *dir, const char *prefix) {
-  char *p = tempnam(dir, prefix);
-  std::string result(p);
-  free(p);
-  return result;
+  unlink(full_filename_.c_str());
 }
 
 TempFile::TempFile(const std::string& contents)
-  : TransientFile(TempNam(nullptr, "ares"), contents) {
+  : TransientFile(nullptr, "ares", contents) {
 
 }
 
